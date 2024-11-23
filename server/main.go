@@ -3,10 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"grpc-cli-chat/chatService/pb"
 	"log"
 	"net"
 
+	"github.com/yuuzin217/grpc-cli-chat/chatService/pb"
 	"google.golang.org/grpc"
 )
 
