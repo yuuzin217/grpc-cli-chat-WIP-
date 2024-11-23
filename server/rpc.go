@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"grpc-cli-chat/chatService/pb"
 	"io"
 	"log"
+
+	"github.com/yuuzin217/grpc-cli-chat/chatService/pb"
 
 	"github.com/google/uuid"
 )
