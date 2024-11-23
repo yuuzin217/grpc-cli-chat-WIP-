@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+option go_package = "./pb";
+
+package grpc.cli.chat;
+
+// チャット開始
+message RoomListRequest {
+}
+message RoomListResponse {
+    repeated string RoomList = 1;
+}
+
+// チャットルーム選択
+message JoinRequest {
+    string Name = 1;
+    int32 RoomNumber = 2;
+}
+message JoinResponse {
+    string Name = 1;
+    int32 RoomNumber = 2;
+}
+
+// チャット送信
+message ChatRequest {
+    string Name = 1;
+    string Message = 2; 
+}
+message ChatResponse {
+    string Name = 1; 
+    string message = 2;
+}
+
+// チャットサービス
+service ChatService {
+    // チャット開始
+    rpc GetRoomList(RoomListRequest) returns (RoomListResponse);
+    // ルーム選択
+    rpc JoinRoom(JoinRequest) returns (JoinResponse);
+    // チャット送信
+    rpc SendAndUpdate(stream ChatRequest) returns (stream ChatResponse);
+}
