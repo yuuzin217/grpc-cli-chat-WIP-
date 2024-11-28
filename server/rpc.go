@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"github.com/yuuzin217/grpc-cli-chat/chatService/pb"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/google/uuid"
 )
@@ -25,44 +26,84 @@ func (*server) GetRoomList(ctx context.Context, req *pb.RoomListRequest) (*pb.Ro
 	return res, nil
 }
 
-type connection struct {
-	name    string
+type broadcastMsg struct {
 	roomNum int
+	from    string
+	msg     string
 }
 
-var connections map[string]*connection = make(map[string]*connection)
-
-func (*server) JoinRoom(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse, error) {
+func (s *server) JoinRoom(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
 		return nil, err
 	}
-	connections[id.String()] = &connection{
-		name:    req.Name,
-		roomNum: int(req.RoomNumber),
+	userId := UserID(id.String())
+	s.clients[userId] = &client{
+		name:        req.Name,
+		joinRoomNum: int(req.RoomNumber),
 	}
 	return &pb.JoinResponse{
+		UserID:     id.String(),
 		Name:       req.Name,
 		RoomNumber: req.RoomNumber,
 	}, nil
 }
 
-func (*server) SendAndUpdate(stream pb.ChatService_SendAndUpdateServer) error {
+func (s *server) SendAndUpdate(stream pb.ChatService_SendAndUpdateServer) error {
 	log.Println("send and update was invoked")
-	for {
-		req, err := stream.Recv()
-		if err == io.EOF {
-			// to do.
-			continue
+	var eg errgroup.Group
+	msgCh := make(chan broadcastMsg)
+	defer close(msgCh)
+	eg.Go(func() error {
+		for {
+			req, err := stream.Recv()
+			if err == io.EOF {
+				// to do.
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			fromId := UserID(req.UserID)
+			from, ok := s.clients[fromId]
+			switch {
+			case !ok:
+				return fmt.Errorf("user is not created")
+			case from == nil:
+				return fmt.Errorf("not joined any room")
+			default:
+				// nothing to do.
+			}
+			if from.stream == nil {
+				s.clients[fromId].stream = stream
+			}
+			msgCh <- broadcastMsg{
+				roomNum: from.joinRoomNum,
+				from:    from.name,
+				msg:     req.Message,
+			}
 		}
-		if err != nil {
-			return err
+	})
+	eg.Go(func() error {
+		for {
+			select {
+			case broadcast := <-msgCh:
+				for _, c := range s.clients {
+					if c.joinRoomNum == broadcast.roomNum && c.name != broadcast.from {
+						if err := c.stream.Send(
+							&pb.ChatResponse{Name: broadcast.from, Message: broadcast.msg},
+						); err != nil {
+							return err
+						}
+					}
+				}
+			default:
+				continue
+			}
 		}
-		stream.Send(
-			&pb.ChatResponse{
-				Name:    req.Name,
-				Message: req.Message,
-			},
-		)
+	})
+	if err := eg.Wait(); err != nil {
+		log.Println(err)
 	}
+	return fmt.Errorf("server stopped")
 }

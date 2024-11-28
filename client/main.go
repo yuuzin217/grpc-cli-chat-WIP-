@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/yuuzin217/grpc-cli-chat/chatService/pb"
+	"golang.org/x/sync/errgroup"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -28,11 +31,8 @@ func newClient() *client {
 }
 
 func (c *client) setup(ctx context.Context) error {
-	resp, err := c.JoinRoom(ctx, &pb.JoinRequest{Name: "aaa", RoomNumber: 2})
-	if err != nil {
-		log.Fatalln(err)
-	}
-	fmt.Println(resp)
+
+	// ルーム選択
 	fmt.Println("welcome to grpc-cli-chat")
 	fmt.Println("pls choose chat room:")
 	res, err := c.GetRoomList(ctx, nil)
@@ -45,8 +45,55 @@ func (c *client) setup(ctx context.Context) error {
 	var roomNum int
 	fmt.Print(" > ")
 	fmt.Scan(&roomNum)
-	fmt.Printf("your choice room number: %v", roomNum)
-	return nil
+	fmt.Printf("your choice room number: %v\n", roomNum)
+
+	// 名前
+	fmt.Print("pls your name > ")
+	var name string
+	fmt.Scan(&name)
+	resp, err := c.JoinRoom(ctx, &pb.JoinRequest{Name: name, RoomNumber: int32(roomNum)})
+	if err != nil {
+		return err
+	}
+	fmt.Println("welcome!!", name)
+	fmt.Println("lets talk!!")
+	userId := resp.UserID
+
+	// メッセ送信
+	stream, err := c.SendAndUpdate(ctx)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer stream.CloseSend()
+	var eg errgroup.Group
+	scanner := bufio.NewScanner(os.Stdin)
+	eg.Go(func() error {
+		for {
+			scanner.Scan()
+			msg := scanner.Text()
+			if msg != "" {
+				if err := stream.Send(&pb.ChatRequest{
+					UserID:  userId,
+					Message: msg,
+				}); err != nil {
+					return err
+				}
+			}
+		}
+	})
+	eg.Go(func() error {
+		for {
+			resp, err := stream.Recv()
+			if err != nil {
+				return err
+			}
+			fmt.Println(fmt.Sprint(resp.Name, ": ", resp.Message))
+		}
+	})
+	if err := eg.Wait(); err != nil {
+		log.Println(err)
+	}
+	return fmt.Errorf("chat end. bye")
 }
 
 func main() {
