@@ -19,9 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ChatService_GetRoomList_FullMethodName   = "/grpc.cli.chat.ChatService/GetRoomList"
-	ChatService_JoinRoom_FullMethodName      = "/grpc.cli.chat.ChatService/JoinRoom"
-	ChatService_SendAndUpdate_FullMethodName = "/grpc.cli.chat.ChatService/SendAndUpdate"
+	ChatService_GetRoomList_FullMethodName = "/grpc.cli.chat.ChatService/GetRoomList"
+	ChatService_JoinRoom_FullMethodName    = "/grpc.cli.chat.ChatService/JoinRoom"
+	ChatService_Connect_FullMethodName     = "/grpc.cli.chat.ChatService/Connect"
 )
 
 // ChatServiceClient is the client API for ChatService service.
@@ -30,12 +30,12 @@ const (
 //
 // チャットサービス
 type ChatServiceClient interface {
-	// チャット開始
+	// ルームリスト取得
 	GetRoomList(ctx context.Context, in *RoomListRequest, opts ...grpc.CallOption) (*RoomListResponse, error)
-	// ルーム選択
+	// ルーム参加（とユーザー作成）
 	JoinRoom(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error)
-	// チャット送信
-	SendAndUpdate(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatRequest, ChatResponse], error)
+	// チャットコネクション
+	Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectRequest, ConnectResponse], error)
 }
 
 type chatServiceClient struct {
@@ -66,18 +66,18 @@ func (c *chatServiceClient) JoinRoom(ctx context.Context, in *JoinRequest, opts 
 	return out, nil
 }
 
-func (c *chatServiceClient) SendAndUpdate(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatRequest, ChatResponse], error) {
+func (c *chatServiceClient) Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectRequest, ConnectResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ChatService_ServiceDesc.Streams[0], ChatService_SendAndUpdate_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ChatService_ServiceDesc.Streams[0], ChatService_Connect_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[ChatRequest, ChatResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[ConnectRequest, ConnectResponse]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ChatService_SendAndUpdateClient = grpc.BidiStreamingClient[ChatRequest, ChatResponse]
+type ChatService_ConnectClient = grpc.BidiStreamingClient[ConnectRequest, ConnectResponse]
 
 // ChatServiceServer is the server API for ChatService service.
 // All implementations must embed UnimplementedChatServiceServer
@@ -85,12 +85,12 @@ type ChatService_SendAndUpdateClient = grpc.BidiStreamingClient[ChatRequest, Cha
 //
 // チャットサービス
 type ChatServiceServer interface {
-	// チャット開始
+	// ルームリスト取得
 	GetRoomList(context.Context, *RoomListRequest) (*RoomListResponse, error)
-	// ルーム選択
+	// ルーム参加（とユーザー作成）
 	JoinRoom(context.Context, *JoinRequest) (*JoinResponse, error)
-	// チャット送信
-	SendAndUpdate(grpc.BidiStreamingServer[ChatRequest, ChatResponse]) error
+	// チャットコネクション
+	Connect(grpc.BidiStreamingServer[ConnectRequest, ConnectResponse]) error
 	mustEmbedUnimplementedChatServiceServer()
 }
 
@@ -107,8 +107,8 @@ func (UnimplementedChatServiceServer) GetRoomList(context.Context, *RoomListRequ
 func (UnimplementedChatServiceServer) JoinRoom(context.Context, *JoinRequest) (*JoinResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method JoinRoom not implemented")
 }
-func (UnimplementedChatServiceServer) SendAndUpdate(grpc.BidiStreamingServer[ChatRequest, ChatResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method SendAndUpdate not implemented")
+func (UnimplementedChatServiceServer) Connect(grpc.BidiStreamingServer[ConnectRequest, ConnectResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method Connect not implemented")
 }
 func (UnimplementedChatServiceServer) mustEmbedUnimplementedChatServiceServer() {}
 func (UnimplementedChatServiceServer) testEmbeddedByValue()                     {}
@@ -167,12 +167,12 @@ func _ChatService_JoinRoom_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ChatService_SendAndUpdate_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(ChatServiceServer).SendAndUpdate(&grpc.GenericServerStream[ChatRequest, ChatResponse]{ServerStream: stream})
+func _ChatService_Connect_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ChatServiceServer).Connect(&grpc.GenericServerStream[ConnectRequest, ConnectResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ChatService_SendAndUpdateServer = grpc.BidiStreamingServer[ChatRequest, ChatResponse]
+type ChatService_ConnectServer = grpc.BidiStreamingServer[ConnectRequest, ConnectResponse]
 
 // ChatService_ServiceDesc is the grpc.ServiceDesc for ChatService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -192,8 +192,8 @@ var ChatService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "SendAndUpdate",
-			Handler:       _ChatService_SendAndUpdate_Handler,
+			StreamName:    "Connect",
+			Handler:       _ChatService_Connect_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

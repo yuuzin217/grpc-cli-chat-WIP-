@@ -17,26 +17,26 @@ message JoinRequest {
     int32 RoomNumber = 2;
 }
 message JoinResponse {
-    string Name = 1;
-    int32 RoomNumber = 2;
+    string UserID = 1;
 }
 
-// チャット送信
-message ChatRequest {
-    string Name = 1;
+// チャット通信
+message ConnectRequest {
+    string UserID = 1;
     string Message = 2; 
+    bool RegisterStream = 3;
 }
-message ChatResponse {
-    string Name = 1; 
+message ConnectResponse {
+    string Name = 1;
     string message = 2;
 }
 
 // チャットサービス
 service ChatService {
-    // チャット開始
+    // ルームリスト取得
     rpc GetRoomList(RoomListRequest) returns (RoomListResponse);
-    // ルーム選択
+    // ルーム参加（とユーザー作成）
     rpc JoinRoom(JoinRequest) returns (JoinResponse);
-    // チャット送信
-    rpc SendAndUpdate(stream ChatRequest) returns (stream ChatResponse);
+    // チャットコネクション
+    rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
 }
