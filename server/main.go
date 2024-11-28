@@ -15,7 +15,7 @@ type UserID string // UUIDv4
 type client struct {
 	name        string
 	joinRoomNum int
-	stream      pb.ChatService_SendAndUpdateServer
+	stream      pb.ChatService_ConnectServer
 }
 
 type server struct {

@@ -43,14 +43,12 @@ func (s *server) JoinRoom(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRes
 		joinRoomNum: int(req.RoomNumber),
 	}
 	return &pb.JoinResponse{
-		UserID:     id.String(),
-		Name:       req.Name,
-		RoomNumber: req.RoomNumber,
+		UserID: id.String(),
 	}, nil
 }
 
-func (s *server) SendAndUpdate(stream pb.ChatService_SendAndUpdateServer) error {
-	log.Println("send and update was invoked")
+func (s *server) Connect(stream pb.ChatService_ConnectServer) error {
+	log.Println("chat connection was started")
 	var eg errgroup.Group
 	msgCh := make(chan broadcastMsg)
 	defer close(msgCh)
@@ -74,8 +72,9 @@ func (s *server) SendAndUpdate(stream pb.ChatService_SendAndUpdateServer) error 
 			default:
 				// nothing to do.
 			}
-			if from.stream == nil {
+			if req.RegisterStream {
 				s.clients[fromId].stream = stream
+				continue
 			}
 			msgCh <- broadcastMsg{
 				roomNum: from.joinRoomNum,
@@ -91,7 +90,7 @@ func (s *server) SendAndUpdate(stream pb.ChatService_SendAndUpdateServer) error 
 				for _, c := range s.clients {
 					if c.joinRoomNum == broadcast.roomNum && c.name != broadcast.from {
 						if err := c.stream.Send(
-							&pb.ChatResponse{Name: broadcast.from, Message: broadcast.msg},
+							&pb.ConnectResponse{Name: broadcast.from, Message: broadcast.msg},
 						); err != nil {
 							return err
 						}

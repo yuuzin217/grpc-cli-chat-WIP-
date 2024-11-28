@@ -59,12 +59,18 @@ func (c *client) setup(ctx context.Context) error {
 	fmt.Println("lets talk!!")
 	userId := resp.UserID
 
-	// メッセ送信
-	stream, err := c.SendAndUpdate(ctx)
+	// チャット開始
+	stream, err := c.Connect(ctx)
 	if err != nil {
 		log.Fatalln(err)
 	}
 	defer stream.CloseSend()
+	if err := stream.Send(&pb.ConnectRequest{
+		UserID:         userId,
+		RegisterStream: true,
+	}); err != nil {
+		log.Fatalln(err)
+	}
 	var eg errgroup.Group
 	scanner := bufio.NewScanner(os.Stdin)
 	eg.Go(func() error {
@@ -72,7 +78,7 @@ func (c *client) setup(ctx context.Context) error {
 			scanner.Scan()
 			msg := scanner.Text()
 			if msg != "" {
-				if err := stream.Send(&pb.ChatRequest{
+				if err := stream.Send(&pb.ConnectRequest{
 					UserID:  userId,
 					Message: msg,
 				}); err != nil {
