@@ -4,20 +4,22 @@ option go_package = "./pb";
 
 package grpc.cli.chat;
 
-// チャット開始
+// ルームリスト取得
 message RoomListRequest {
 }
 message RoomListResponse {
-    repeated string RoomList = 1;
+    // map[RoomNumber]RoomName
+    map<int32, string> RoomList = 1;
 }
 
-// チャットルーム選択
+// ルーム参加
 message JoinRequest {
     string Name = 1;
     int32 RoomNumber = 2;
 }
 message JoinResponse {
     string UserID = 1;
+    Error Error = 2;
 }
 
 // チャット通信
@@ -39,4 +41,22 @@ service ChatService {
     rpc JoinRoom(JoinRequest) returns (JoinResponse);
     // チャットコネクション
     rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
+}
+
+// 
+message Error {
+    ClientCode Code = 1;
+    string Message = 2;
+}
+
+// クライアントコード
+enum ClientCode  {
+    // 0 番は使用しない
+    Unknown = 0;
+    // 汎用エラー
+    SystemError = 1;
+    // ルーム番号が不明
+    UnknownRoomNumber = 2;
+    // 名前が未入力
+    NoNameEntered = 3;
 }
