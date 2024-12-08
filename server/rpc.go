@@ -12,18 +12,14 @@ import (
 	"github.com/google/uuid"
 )
 
-var roomList map[int]string = map[int]string{
+var roomList map[int32]string = map[int32]string{
 	1: "room1",
 	2: "room2",
 	3: "room3",
 }
 
 func (*server) GetRoomList(ctx context.Context, req *pb.RoomListRequest) (*pb.RoomListResponse, error) {
-	res := &pb.RoomListResponse{}
-	for i, room := range roomList {
-		res.RoomList = append(res.RoomList, fmt.Sprint(i, ": ", room))
-	}
-	return res, nil
+	return &pb.RoomListResponse{RoomList: roomList}, nil
 }
 
 type broadcastMsg struct {
@@ -33,18 +29,24 @@ type broadcastMsg struct {
 }
 
 func (s *server) JoinRoom(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse, error) {
+	// validate
+	if _, isExists := roomList[req.RoomNumber]; !isExists {
+		return nil, fmt.Errorf("specified room number does not exist")
+	}
+	if req.Name == "" {
+		return nil, fmt.Errorf("No name entered")
+	}
+	// generate id
 	id, err := uuid.NewRandom()
 	if err != nil {
 		return nil, err
 	}
-	userId := UserID(id.String())
+	userId := id.String()
 	s.clients[userId] = &client{
 		name:        req.Name,
 		joinRoomNum: int(req.RoomNumber),
 	}
-	return &pb.JoinResponse{
-		UserID: id.String(),
-	}, nil
+	return &pb.JoinResponse{UserID: userId}, nil
 }
 
 func (s *server) Connect(stream pb.ChatService_ConnectServer) error {
@@ -62,7 +64,7 @@ func (s *server) Connect(stream pb.ChatService_ConnectServer) error {
 			if err != nil {
 				return err
 			}
-			fromId := UserID(req.UserID)
+			fromId := req.UserID
 			from, ok := s.clients[fromId]
 			switch {
 			case !ok:
@@ -104,5 +106,5 @@ func (s *server) Connect(stream pb.ChatService_ConnectServer) error {
 	if err := eg.Wait(); err != nil {
 		log.Println(err)
 	}
-	return fmt.Errorf("server stopped")
+	return fmt.Errorf("unknown error")
 }

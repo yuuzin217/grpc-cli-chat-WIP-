@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"maps"
 	"os"
+	"slices"
 
 	"github.com/yuuzin217/grpc-cli-chat/chatService/pb"
 	"golang.org/x/sync/errgroup"
@@ -20,6 +22,9 @@ var addr = flag.String("addr", "localhost:50051", "the address to connect to")
 type client struct {
 	conn *grpc.ClientConn
 	pb.ChatServiceClient
+	stream pb.ChatService_ConnectClient
+	userId string
+	name   string
 }
 
 func newClient() *client {
@@ -27,49 +32,71 @@ func newClient() *client {
 	if err != nil {
 		log.Fatalln("did not connect:", err)
 	}
-	return &client{conn, pb.NewChatServiceClient(conn)}
+	return &client{conn, pb.NewChatServiceClient(conn), nil, "", ""}
 }
 
 func (c *client) setup(ctx context.Context) error {
-
-	// ルーム選択
-	fmt.Println("welcome to grpc-cli-chat")
-	fmt.Println("pls choose chat room:")
+	fmt.Println("welcome to grpc-cli-chat!!")
+	var roomNum int
+	var name string
 	res, err := c.GetRoomList(ctx, nil)
 	if err != nil {
 		return err
 	}
-	for _, room := range res.RoomList {
-		fmt.Println(room)
+	// ルーム選択
+	for {
+		fmt.Println("select a chat room number:")
+		for _, key := range slices.Sorted(maps.Keys(res.RoomList)) {
+			fmt.Println(fmt.Sprint(key, ": ", res.RoomList[key]))
+		}
+		fmt.Print(" > ")
+		fmt.Scan(&roomNum)
+		if _, b := res.RoomList[int32(roomNum)]; !b {
+			fmt.Println("Unknown room number. Please select again")
+			continue
+		} else {
+			break
+		}
 	}
-	var roomNum int
-	fmt.Print(" > ")
-	fmt.Scan(&roomNum)
-	fmt.Printf("your choice room number: %v\n", roomNum)
-
-	// 名前
-	fmt.Print("pls your name > ")
-	var name string
-	fmt.Scan(&name)
-	resp, err := c.JoinRoom(ctx, &pb.JoinRequest{Name: name, RoomNumber: int32(roomNum)})
-	if err != nil {
-		return err
+	// 名前入力
+	for {
+		fmt.Printf("Your selected chat room number is %v\n", roomNum)
+		fmt.Print("enter your name... > ")
+		fmt.Scan(&name)
+		if name == "" {
+			fmt.Println("name has not been entered. Please re-enter")
+			continue
+		} else {
+			break
+		}
+	}
+	// ルーム参加
+	{
+		res, err := c.JoinRoom(ctx, &pb.JoinRequest{Name: name, RoomNumber: int32(roomNum)})
+		if err != nil {
+			return err
+		}
+		c.name = name
+		c.userId = res.UserID
 	}
 	fmt.Println("welcome!!", name)
-	fmt.Println("lets talk!!")
-	userId := resp.UserID
+	fmt.Println("------ Let's talking !! ------", "\n")
+	return nil
+}
 
+func (c *client) connect(ctx context.Context) error {
 	// チャット開始
 	stream, err := c.Connect(ctx)
 	if err != nil {
-		log.Fatalln(err)
+		return fmt.Errorf("failed to grpc 'Connect': %v", err)
 	}
 	defer stream.CloseSend()
+	// stream をサーバー側に登録するため空リクエスト
 	if err := stream.Send(&pb.ConnectRequest{
-		UserID:         userId,
+		UserID:         c.userId,
 		RegisterStream: true,
 	}); err != nil {
-		log.Fatalln(err)
+		return err
 	}
 	var eg errgroup.Group
 	scanner := bufio.NewScanner(os.Stdin)
@@ -79,7 +106,7 @@ func (c *client) setup(ctx context.Context) error {
 			msg := scanner.Text()
 			if msg != "" {
 				if err := stream.Send(&pb.ConnectRequest{
-					UserID:  userId,
+					UserID:  c.userId,
 					Message: msg,
 				}); err != nil {
 					return err
@@ -97,19 +124,21 @@ func (c *client) setup(ctx context.Context) error {
 		}
 	})
 	if err := eg.Wait(); err != nil {
-		log.Println(err)
+		// TODO: ログレベル等によって挙動を切り分ける
+		return err
 	}
-	return fmt.Errorf("chat end. bye")
+	return fmt.Errorf("unknown Error")
 }
 
 func main() {
 	flag.Parse()
 	c := newClient()
 	defer c.conn.Close()
-
 	ctx := context.Background()
-
 	if err := c.setup(ctx); err != nil {
 		log.Fatalln("failed to setup:", err)
+	}
+	if err := c.connect(ctx); err != nil {
+		log.Fatalln("failed to connect:", err)
 	}
 }

@@ -10,8 +10,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-type UserID string // UUIDv4
-
 type client struct {
 	name        string
 	joinRoomNum int
@@ -20,7 +18,7 @@ type client struct {
 
 type server struct {
 	pb.UnimplementedChatServiceServer
-	clients map[UserID]*client
+	clients map[string]*client // map[UserID]*client
 }
 
 var port = flag.Int("port", 50051, "the port to serve on")
@@ -31,12 +29,12 @@ func init() {
 
 func newServer() *server {
 	return &server{
-		clients: make(map[UserID]*client),
+		clients: make(map[string]*client),
 	}
 }
 
 func main() {
-	listen, err := net.Listen("tcp", fmt.Sprintf("localhost:%v", *port))
+	listen, err := net.Listen("tcp", fmt.Sprintf(":%v", *port))
 	if err != nil {
 		log.Fatalln("failed to listen:", err)
 	}
