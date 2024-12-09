@@ -1,4 +1,6 @@
 
+SHELL=/bin/bash
+
 # 番兵を置いておく（誤動作防止）
 shell_check:
 	@echo ${SHELL}
@@ -15,3 +17,6 @@ run_client:
 
 run_server:
 	@go run ./server/.
+
+lint:
+	@go vet ./...
