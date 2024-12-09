@@ -80,7 +80,7 @@ func (c *client) setup(ctx context.Context) error {
 		c.userId = res.UserID
 	}
 	fmt.Println("welcome!!", name)
-	fmt.Println("------ Let's talking !! ------", "\n")
+	fmt.Println("------ Let's talking !! ------")
 	return nil
 }
 
