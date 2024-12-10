@@ -26,7 +26,7 @@ message JoinResponse {
 message ConnectRequest {
     string UserID = 1;
     string Message = 2; 
-    bool RegisterStream = 3;
+    bool RegisterConnection = 3;
 }
 message ConnectResponse {
     string Name = 1;

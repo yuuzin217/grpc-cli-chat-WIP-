@@ -75,6 +75,8 @@ func writeLog(roomNum int, userId string, name string, msg string) error {
 		}
 	}
 	log.SetOutput(logFile)
+	// 標準出力にも残したい場合はこちら
+	// log.SetOutput(io.MultiWriter(logFile, os.Stdout))
 	log.Println(fmt.Sprintf(": UserID: %s, Name: %s, Message: %s", userId, name, msg))
 	log.SetOutput(os.Stdout)
 	return nil

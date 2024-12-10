@@ -91,10 +91,10 @@ func (c *client) connect(ctx context.Context) error {
 		return fmt.Errorf("failed to grpc 'Connect': %v", err)
 	}
 	defer stream.CloseSend()
-	// stream をサーバー側に登録するため空リクエスト
+	// コネクション情報をサーバー側に登録するため空リクエスト
 	if err := stream.Send(&pb.ConnectRequest{
-		UserID:         c.userId,
-		RegisterStream: true,
+		UserID:             c.userId,
+		RegisterConnection: true,
 	}); err != nil {
 		return err
 	}
