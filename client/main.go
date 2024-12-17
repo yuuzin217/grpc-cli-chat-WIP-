@@ -11,7 +11,6 @@ import (
 	"slices"
 
 	"github.com/yuuzin217/grpc-cli-chat/chatService/pb"
-	"golang.org/x/sync/errgroup"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -22,9 +21,9 @@ var addr = flag.String("addr", "localhost:50051", "the address to connect to")
 type client struct {
 	conn *grpc.ClientConn
 	pb.ChatServiceClient
-	stream pb.ChatService_ConnectClient
-	userId string
-	name   string
+	userId  string
+	name    string
+	roomNum int
 }
 
 func newClient() *client {
@@ -32,7 +31,7 @@ func newClient() *client {
 	if err != nil {
 		log.Fatalln("did not connect:", err)
 	}
-	return &client{conn, pb.NewChatServiceClient(conn), nil, "", ""}
+	return &client{conn, pb.NewChatServiceClient(conn), "", "", 0}
 }
 
 func (c *client) setup(ctx context.Context) error {
@@ -78,6 +77,7 @@ func (c *client) setup(ctx context.Context) error {
 		}
 		c.name = name
 		c.userId = res.UserID
+		c.roomNum = roomNum
 	}
 	fmt.Println("welcome!!", name)
 	fmt.Println("------ Let's talking !! ------")
@@ -92,42 +92,52 @@ func (c *client) connect(ctx context.Context) error {
 	}
 	defer stream.CloseSend()
 	// コネクション情報をサーバー側に登録するため空リクエスト
-	if err := stream.Send(&pb.ConnectRequest{
-		UserID:             c.userId,
-		RegisterConnection: true,
-	}); err != nil {
+	if err := stream.Send(&pb.ConnectRequest{MessageInfo: &pb.MessageInfo{SenderID: c.userId, SenderName: c.name, RoomNumber: int32(c.roomNum)}}); err != nil {
 		return err
 	}
-	var eg errgroup.Group
+	errCh := make(chan error)
+	go c.sendMsg(errCh, stream)
+	go recvMsg(errCh, stream)
+	for {
+		select {
+		case err := <-errCh:
+			// TODO: エラーによって適切な処理を行う
+			fmt.Println(err)
+		default:
+			continue
+		}
+	}
+}
+
+func (c *client) sendMsg(errCh chan<- error, stream pb.ChatService_ConnectClient) {
 	scanner := bufio.NewScanner(os.Stdin)
-	eg.Go(func() error {
-		for {
-			scanner.Scan()
-			msg := scanner.Text()
-			if msg != "" {
-				if err := stream.Send(&pb.ConnectRequest{
-					UserID:  c.userId,
-					Message: msg,
-				}); err != nil {
-					return err
-				}
+	for {
+		scanner.Scan()
+		msg := scanner.Text()
+		if msg != "" {
+			if err := stream.Send(&pb.ConnectRequest{
+				MessageInfo: &pb.MessageInfo{
+					SenderID:   c.userId,
+					SenderName: c.name,
+					RoomNumber: int32(c.roomNum),
+					Content:    msg,
+				},
+			}); err != nil {
+				errCh <- err
 			}
 		}
-	})
-	eg.Go(func() error {
-		for {
-			resp, err := stream.Recv()
-			if err != nil {
-				return err
-			}
-			fmt.Println(fmt.Sprint(resp.Name, ": ", resp.Message))
-		}
-	})
-	if err := eg.Wait(); err != nil {
-		// TODO: ログレベル等によって挙動を切り分ける
-		return err
 	}
-	return fmt.Errorf("unknown Error")
+}
+
+func recvMsg(errCh chan<- error, stream pb.ChatService_ConnectClient) {
+	for {
+		res, err := stream.Recv()
+		if err != nil {
+			errCh <- err
+		}
+		mInfo := res.MessageInfo
+		fmt.Println(fmt.Sprint(mInfo.SenderName, ": ", mInfo.Content))
+	}
 }
 
 func main() {

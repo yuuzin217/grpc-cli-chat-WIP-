@@ -2,61 +2,48 @@ syntax = "proto3";
 
 option go_package = "./pb";
 
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
 package grpc.cli.chat;
 
 // ルームリスト取得
-message RoomListRequest {
-}
 message RoomListResponse {
-    // map[RoomNumber]RoomName
-    map<int32, string> RoomList = 1;
+    map<int32, string> RoomList = 1; // map[RoomNumber]RoomName
 }
 
 // ルーム参加
 message JoinRequest {
-    string Name = 1;
-    int32 RoomNumber = 2;
+    string Name = 1; // 入力した名前
+    int32 RoomNumber = 2; // 選択したルーム番号
 }
 message JoinResponse {
-    string UserID = 1;
-    Error Error = 2;
+    string UserID = 1; // 発行された識別ID
 }
 
 // チャット通信
 message ConnectRequest {
-    string UserID = 1;
-    string Message = 2; 
-    bool RegisterConnection = 3;
+    MessageInfo MessageInfo = 1;
 }
 message ConnectResponse {
-    string Name = 1;
-    string message = 2;
+    MessageInfo MessageInfo = 1;
+}
+
+// TODO: これでやりとりするのには少しオーバーヘッドがある気もするが、一旦気にしないこととする
+message MessageInfo {
+    string SenderID = 1; // メッセージ送信者の識別ID
+    string SenderName = 2; // メッセージ送信者の名前
+    int32 RoomNumber = 3; // 対象のルーム番号
+    string Content = 4; // 内容
+    google.protobuf.Timestamp Timestamp = 5; // タイムスタンプ
 }
 
 // チャットサービス
 service ChatService {
     // ルームリスト取得
-    rpc GetRoomList(RoomListRequest) returns (RoomListResponse);
-    // ルーム参加（とユーザー作成）
+    rpc GetRoomList(google.protobuf.Empty) returns (RoomListResponse);
+    // ルーム参加
     rpc JoinRoom(JoinRequest) returns (JoinResponse);
-    // チャットコネクション
+    // チャット接続
     rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
-}
-
-// 
-message Error {
-    ClientCode Code = 1;
-    string Message = 2;
-}
-
-// クライアントコード
-enum ClientCode  {
-    // 0 番は使用しない
-    Unknown = 0;
-    // 汎用エラー
-    SystemError = 1;
-    // ルーム番号が不明
-    UnknownRoomNumber = 2;
-    // 名前が未入力
-    NoNameEntered = 3;
 }

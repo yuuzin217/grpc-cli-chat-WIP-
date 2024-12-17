@@ -11,6 +11,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -23,10 +24,10 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ChatServiceClient interface {
 	// ルームリスト取得
-	GetRoomList(ctx context.Context, in *RoomListRequest, opts ...grpc.CallOption) (*RoomListResponse, error)
-	// ルーム参加（とユーザー作成）
+	GetRoomList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RoomListResponse, error)
+	// ルーム参加
 	JoinRoom(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error)
-	// チャットコネクション
+	// チャット接続
 	Connect(ctx context.Context, opts ...grpc.CallOption) (ChatService_ConnectClient, error)
 }
 
@@ -38,7 +39,7 @@ func NewChatServiceClient(cc grpc.ClientConnInterface) ChatServiceClient {
 	return &chatServiceClient{cc}
 }
 
-func (c *chatServiceClient) GetRoomList(ctx context.Context, in *RoomListRequest, opts ...grpc.CallOption) (*RoomListResponse, error) {
+func (c *chatServiceClient) GetRoomList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RoomListResponse, error) {
 	out := new(RoomListResponse)
 	err := c.cc.Invoke(ctx, "/grpc.cli.chat.ChatService/GetRoomList", in, out, opts...)
 	if err != nil {
@@ -92,10 +93,10 @@ func (x *chatServiceConnectClient) Recv() (*ConnectResponse, error) {
 // for forward compatibility
 type ChatServiceServer interface {
 	// ルームリスト取得
-	GetRoomList(context.Context, *RoomListRequest) (*RoomListResponse, error)
-	// ルーム参加（とユーザー作成）
+	GetRoomList(context.Context, *emptypb.Empty) (*RoomListResponse, error)
+	// ルーム参加
 	JoinRoom(context.Context, *JoinRequest) (*JoinResponse, error)
-	// チャットコネクション
+	// チャット接続
 	Connect(ChatService_ConnectServer) error
 	mustEmbedUnimplementedChatServiceServer()
 }
@@ -104,7 +105,7 @@ type ChatServiceServer interface {
 type UnimplementedChatServiceServer struct {
 }
 
-func (UnimplementedChatServiceServer) GetRoomList(context.Context, *RoomListRequest) (*RoomListResponse, error) {
+func (UnimplementedChatServiceServer) GetRoomList(context.Context, *emptypb.Empty) (*RoomListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRoomList not implemented")
 }
 func (UnimplementedChatServiceServer) JoinRoom(context.Context, *JoinRequest) (*JoinResponse, error) {
@@ -127,7 +128,7 @@ func RegisterChatServiceServer(s grpc.ServiceRegistrar, srv ChatServiceServer) {
 }
 
 func _ChatService_GetRoomList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RoomListRequest)
+	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -139,7 +140,7 @@ func _ChatService_GetRoomList_Handler(srv interface{}, ctx context.Context, dec 
 		FullMethod: "/grpc.cli.chat.ChatService/GetRoomList",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ChatServiceServer).GetRoomList(ctx, req.(*RoomListRequest))
+		return srv.(ChatServiceServer).GetRoomList(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }

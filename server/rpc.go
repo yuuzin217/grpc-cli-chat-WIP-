@@ -3,45 +3,35 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 
 	"github.com/yuuzin217/grpc-cli-chat/chatService/pb"
-
-	"github.com/google/uuid"
+	"github.com/yuuzin217/grpc-cli-chat/pkg/room"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-var roomList map[int32]string = map[int32]string{
-	1: "room1",
-	2: "room2",
-	3: "room3",
-}
-
 // ルーム一覧取得
-func (*server) GetRoomList(ctx context.Context, req *pb.RoomListRequest) (*pb.RoomListResponse, error) {
-	return &pb.RoomListResponse{RoomList: roomList}, nil
+func (*server) GetRoomList(ctx context.Context, _ *emptypb.Empty) (*pb.RoomListResponse, error) {
+	return &pb.RoomListResponse{RoomList: room.RoomList}, nil
 }
 
 // ルーム参加
 func (s *server) JoinRoom(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse, error) {
 	// validate
-	if _, isExists := roomList[req.RoomNumber]; !isExists {
+	if _, isExists := room.RoomList[req.RoomNumber]; !isExists {
 		return nil, fmt.Errorf("specified room number does not exist")
 	}
 	if req.Name == "" {
 		return nil, fmt.Errorf("No name entered")
 	}
-	// generate id
-	id, err := uuid.NewRandom()
+	// ルーム参加
+	r := room.GetOrCreateRoom(int(req.RoomNumber))
+	u, err := room.NewUser(req.Name)
 	if err != nil {
 		return nil, err
 	}
-	userId := id.String()
-	s.clients[userId] = &client{
-		name:        req.Name,
-		joinRoomNum: int(req.RoomNumber),
-	}
-	return &pb.JoinResponse{UserID: userId}, nil
+	r.AddUser(u)
+	return &pb.JoinResponse{UserID: u.ID}, nil
 }
 
 // チャット通信
@@ -49,8 +39,6 @@ func (s *server) Connect(stream pb.ChatService_ConnectServer) error {
 	log.Println("chat connection was started")
 	msgChan := make(chan broadcastMsg)
 	errChan := make(chan error)
-	defer close(msgChan)
-	defer close(errChan)
 	go s.recvMsg(errChan, msgChan, stream)
 	go s.sendMsg(errChan, msgChan)
 	for {
@@ -65,18 +53,18 @@ func (s *server) Connect(stream pb.ChatService_ConnectServer) error {
 }
 
 type broadcastMsg struct {
-	roomNum int
-	fromId  string
-	from    string
-	msg     string
+	roomNum    int
+	senderId   string
+	senderName string
+	msg        string
 }
 
 func sendBroadcastMsg(msgChan chan<- broadcastMsg, roomNum int, id string, name string, msg string) error {
 	msgChan <- broadcastMsg{
-		roomNum: roomNum,
-		fromId:  id,
-		from:    name,
-		msg:     msg,
+		roomNum:    roomNum,
+		senderId:   id,
+		senderName: name,
+		msg:        msg,
 	}
 	return writeLog(roomNum, id, name, msg)
 }
@@ -84,39 +72,29 @@ func sendBroadcastMsg(msgChan chan<- broadcastMsg, roomNum int, id string, name 
 func (s *server) recvMsg(errChan chan<- error, msgChan chan<- broadcastMsg, stream pb.ChatService_ConnectServer) {
 	for {
 		req, err := stream.Recv()
-		if err == io.EOF {
-			continue
-		}
 		if err != nil {
 			errChan <- err
 		}
-		client, err := s.getClient(req.UserID)
+		mInfo := req.MessageInfo
+		r, err := room.GetRoom(int(mInfo.RoomNumber))
 		if err != nil {
 			errChan <- err
 		}
-		msg := req.Message
-		if req.RegisterConnection {
-			s.clients[req.UserID].stream = stream
+		u, ok := r.Users[mInfo.SenderID]
+		if !ok {
+			errChan <- fmt.Errorf("does not exists user: user id (%s), name (%s)", mInfo.SenderID, mInfo.SenderName)
+		}
+
+		msg := mInfo.Content
+		if !u.IsSetCache {
+			u.SetStreamCache(stream)
 			msg = "[INFO] joined in room!!"
 		}
 		if err := sendBroadcastMsg(
-			msgChan, client.joinRoomNum, req.UserID, client.name, msg,
+			msgChan, int(mInfo.RoomNumber), mInfo.SenderID, mInfo.SenderName, msg,
 		); err != nil {
 			errChan <- err
 		}
-	}
-}
-
-func (s *server) getClient(userId string) (*client, error) {
-	commonErrStr := fmt.Sprintf("getClient error: user id (%s)", userId)
-	client, ok := s.clients[userId]
-	switch {
-	case !ok:
-		return nil, fmt.Errorf("client is not registered: %s", commonErrStr)
-	case client == nil:
-		return nil, fmt.Errorf("not joined any room: %s", commonErrStr)
-	default:
-		return client, nil
 	}
 }
 
@@ -124,9 +102,28 @@ func (s *server) sendMsg(errChan chan<- error, msgChan <-chan broadcastMsg) {
 	for {
 		select {
 		case broadcast := <-msgChan:
-			for _, target := range s.getSendTargets(broadcast.roomNum, broadcast.fromId) {
-				if err := target.stream.Send(
-					&pb.ConnectResponse{Name: broadcast.from, Message: broadcast.msg},
+			r, err := room.GetRoom(broadcast.roomNum)
+			if err != nil {
+				errChan <- err
+				continue
+			}
+			for _, user := range r.Users {
+				if user.ID == broadcast.senderId {
+					// 送信者自身にはエコーバックしない
+					continue
+				}
+				if user.StreamCache == nil {
+					// （ないとは思うが）stream が存在しないので無視
+					continue
+				}
+				if err := user.StreamCache.Send(
+					&pb.ConnectResponse{
+						MessageInfo: &pb.MessageInfo{
+							SenderID:   broadcast.senderId,
+							SenderName: broadcast.senderName,
+							Content:    broadcast.msg,
+						},
+					},
 				); err != nil {
 					errChan <- err
 				}
@@ -135,17 +132,4 @@ func (s *server) sendMsg(errChan chan<- error, msgChan <-chan broadcastMsg) {
 			continue
 		}
 	}
-}
-
-func (s *server) getSendTargets(targetRoomNum int, fromId string) map[string]*client {
-	copied := make(map[string]*client)
-	for k, v := range s.clients {
-		if targetRoomNum == v.joinRoomNum {
-			copied[k] = v
-		}
-	}
-	// 送信元へはエコーされなくていいので除外
-	// ※ map を新たに作り直しているので実質ディープコピーになっており元データには影響ない
-	delete(copied, fromId)
-	return copied
 }
