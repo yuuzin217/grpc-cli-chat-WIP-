@@ -1,32 +1,29 @@
 syntax = "proto3";
 
+package grpc.cli.chat;
+
 option go_package = "./pb";
 
 import "google/protobuf/timestamp.proto";
-import "google/protobuf/empty.proto";
-
-package grpc.cli.chat;
-
-// ルームリスト取得
-message RoomListResponse {
-    map<int32, string> RoomList = 1; // map[RoomNumber]RoomName
-}
+// import "google/protobuf/empty.proto";
 
 // ルーム参加
-message JoinRequest {
+message MatchingRequest {
     string Name = 1; // 入力した名前
-    int32 RoomNumber = 2; // 選択したルーム番号
 }
-message JoinResponse {
-    string UserID = 1; // 発行された識別ID
+message MatchingResponse {
+    bool MatchingStatus = 1;
+    string NoticeMessage = 2;
 }
 
 // チャット通信
-message ConnectRequest {
-    MessageInfo MessageInfo = 1;
+message SendMessage {
+    string Name = 1;
+    string Content = 2;
 }
-message ConnectResponse {
-    MessageInfo MessageInfo = 1;
+message ReceivedMessage {
+    string Name = 1;
+    string Content =2;
 }
 
 // TODO: これでやりとりするのには少しオーバーヘッドがある気もするが、一旦気にしないこととする
@@ -40,10 +37,8 @@ message MessageInfo {
 
 // チャットサービス
 service ChatService {
-    // ルームリスト取得
-    rpc GetRoomList(google.protobuf.Empty) returns (RoomListResponse);
-    // ルーム参加
-    rpc JoinRoom(JoinRequest) returns (JoinResponse);
+    // マッチング
+    rpc Matching(stream MatchingRequest) returns (stream MatchingResponse);
     // チャット接続
-    rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
+    rpc Connect(stream SendMessage) returns (stream ReceivedMessage);
 }
