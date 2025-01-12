@@ -6,14 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"maps"
 	"os"
-	"slices"
 
 	"github.com/yuuzin217/grpc-cli-chat/chatService/pb"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 var addr = flag.String("addr", "localhost:50051", "the address to connect to")
@@ -21,9 +20,9 @@ var addr = flag.String("addr", "localhost:50051", "the address to connect to")
 type client struct {
 	conn *grpc.ClientConn
 	pb.ChatServiceClient
-	userId  string
-	name    string
-	roomNum int
+	sessionID string
+	roomID    string
+	name      string
 }
 
 func newClient() *client {
@@ -31,60 +30,41 @@ func newClient() *client {
 	if err != nil {
 		log.Fatalln("did not connect:", err)
 	}
-	return &client{conn, pb.NewChatServiceClient(conn), "", "", 0}
+	return &client{conn, pb.NewChatServiceClient(conn), "", "", ""}
 }
 
 func (c *client) setup(ctx context.Context) error {
 	fmt.Println("welcome to grpc-cli-chat!!")
-	var roomNum int
+
+	// 名前入力
 	var name string
-	res, err := c.GetRoomList(ctx, nil)
+	fmt.Print("enter your name... > ")
+	fmt.Scan(&name)
+
+	// マッチング
+	stream, err := c.Matching(ctx, &pb.MatchingRequest{Name: name})
 	if err != nil {
 		return err
 	}
-	// ルーム選択
 	for {
-		fmt.Println("select a chat room number:")
-		for _, key := range slices.Sorted(maps.Keys(res.RoomList)) {
-			fmt.Println(fmt.Sprint(key, ": ", res.RoomList[key]))
-		}
-		fmt.Print(" > ")
-		fmt.Scan(&roomNum)
-		if _, b := res.RoomList[int32(roomNum)]; !b {
-			fmt.Println("Unknown room number. Please select again")
-			continue
-		} else {
-			break
-		}
-	}
-	// 名前入力
-	for {
-		fmt.Printf("Your selected chat room number is %v\n", roomNum)
-		fmt.Print("enter your name... > ")
-		fmt.Scan(&name)
-		if name == "" {
-			fmt.Println("name has not been entered. Please re-enter")
-			continue
-		} else {
-			break
-		}
-	}
-	// ルーム参加
-	{
-		res, err := c.JoinRoom(ctx, &pb.JoinRequest{Name: name, RoomNumber: int32(roomNum)})
+		resp, err := stream.Recv()
 		if err != nil {
 			return err
 		}
-		c.name = name
-		c.userId = res.UserID
-		c.roomNum = roomNum
+		if resp.IsConnected {
+			c.name = name
+			c.roomID = resp.RoomID
+			c.sessionID = resp.SessionID
+			fmt.Println(resp.NoticeMessage)
+			return nil
+		}
+		fmt.Println(resp.NoticeMessage)
 	}
-	fmt.Println("welcome!!", name)
-	fmt.Println("------ Let's talking !! ------")
-	return nil
 }
 
 func (c *client) connect(ctx context.Context) error {
+	md := metadata.Pairs("session_id", c.sessionID)
+	ctx = metadata.NewOutgoingContext(ctx, md)
 	// チャット開始
 	stream, err := c.Connect(ctx)
 	if err != nil {
@@ -92,15 +72,15 @@ func (c *client) connect(ctx context.Context) error {
 	}
 	defer stream.CloseSend()
 	// コネクション情報をサーバー側に登録するため空リクエスト
-	if err := stream.Send(&pb.ConnectRequest{MessageInfo: &pb.MessageInfo{SenderID: c.userId, SenderName: c.name, RoomNumber: int32(c.roomNum)}}); err != nil {
+	if err := stream.Send(&pb.SendMessage{RoomID: c.roomID}); err != nil {
 		return err
 	}
-	errCh := make(chan error)
-	go c.sendMsg(errCh, stream)
-	go recvMsg(errCh, stream)
+	errChan := make(chan error)
+	go c.sendMsg(errChan, stream)
+	go recvMsg(errChan, stream)
 	for {
 		select {
-		case err := <-errCh:
+		case err := <-errChan:
 			// TODO: エラーによって適切な処理を行う
 			fmt.Println(err)
 		default:
@@ -115,13 +95,10 @@ func (c *client) sendMsg(errCh chan<- error, stream pb.ChatService_ConnectClient
 		scanner.Scan()
 		msg := scanner.Text()
 		if msg != "" {
-			if err := stream.Send(&pb.ConnectRequest{
-				MessageInfo: &pb.MessageInfo{
-					SenderID:   c.userId,
-					SenderName: c.name,
-					RoomNumber: int32(c.roomNum),
-					Content:    msg,
-				},
+			if err := stream.Send(&pb.SendMessage{
+				RoomID:  c.roomID,
+				Name:    c.name,
+				Content: msg,
 			}); err != nil {
 				errCh <- err
 			}
@@ -131,12 +108,11 @@ func (c *client) sendMsg(errCh chan<- error, stream pb.ChatService_ConnectClient
 
 func recvMsg(errCh chan<- error, stream pb.ChatService_ConnectClient) {
 	for {
-		res, err := stream.Recv()
+		recv, err := stream.Recv()
 		if err != nil {
 			errCh <- err
 		}
-		mInfo := res.MessageInfo
-		fmt.Println(fmt.Sprint(mInfo.SenderName, ": ", mInfo.Content))
+		fmt.Println(fmt.Sprint(recv.Name, ": ", recv.Content))
 	}
 }
 

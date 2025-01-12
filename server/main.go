@@ -7,6 +7,7 @@ import (
 	"net"
 
 	"github.com/yuuzin217/grpc-cli-chat/chatService/pb"
+	"github.com/yuuzin217/grpc-cli-chat/server/rpc"
 	"google.golang.org/grpc"
 )
 
@@ -16,24 +17,13 @@ func init() {
 	flag.Parse()
 }
 
-type server struct {
-	pb.UnimplementedChatServiceServer
-	// rooms room.Rooms
-}
-
-func newServer() *server {
-	return &server{
-		// rooms: make(room.Rooms),
-	}
-}
-
 func main() {
 	listen, err := net.Listen("tcp", fmt.Sprintf("localhost:%v", *port))
 	if err != nil {
 		log.Fatalln("failed to listen:", err)
 	}
 	fmt.Println("server listening at", listen.Addr())
-	s := newServer()
+	s := rpc.NewServer()
 	gs := grpc.NewServer()
 	pb.RegisterChatServiceServer(gs, s)
 	if err := gs.Serve(listen); err != nil {
