@@ -30,7 +30,7 @@ const (
 // チャットサービス
 type ChatServiceClient interface {
 	// マッチング
-	Matching(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[MatchingRequest, MatchingResponse], error)
+	Matching(ctx context.Context, in *MatchingRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[MatchingResponse], error)
 	// チャット接続
 	Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SendMessage, ReceivedMessage], error)
 }
@@ -43,18 +43,24 @@ func NewChatServiceClient(cc grpc.ClientConnInterface) ChatServiceClient {
 	return &chatServiceClient{cc}
 }
 
-func (c *chatServiceClient) Matching(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[MatchingRequest, MatchingResponse], error) {
+func (c *chatServiceClient) Matching(ctx context.Context, in *MatchingRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[MatchingResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ChatService_ServiceDesc.Streams[0], ChatService_Matching_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	x := &grpc.GenericClientStream[MatchingRequest, MatchingResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ChatService_MatchingClient = grpc.BidiStreamingClient[MatchingRequest, MatchingResponse]
+type ChatService_MatchingClient = grpc.ServerStreamingClient[MatchingResponse]
 
 func (c *chatServiceClient) Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SendMessage, ReceivedMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -76,7 +82,7 @@ type ChatService_ConnectClient = grpc.BidiStreamingClient[SendMessage, ReceivedM
 // チャットサービス
 type ChatServiceServer interface {
 	// マッチング
-	Matching(grpc.BidiStreamingServer[MatchingRequest, MatchingResponse]) error
+	Matching(*MatchingRequest, grpc.ServerStreamingServer[MatchingResponse]) error
 	// チャット接続
 	Connect(grpc.BidiStreamingServer[SendMessage, ReceivedMessage]) error
 	mustEmbedUnimplementedChatServiceServer()
@@ -89,7 +95,7 @@ type ChatServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedChatServiceServer struct{}
 
-func (UnimplementedChatServiceServer) Matching(grpc.BidiStreamingServer[MatchingRequest, MatchingResponse]) error {
+func (UnimplementedChatServiceServer) Matching(*MatchingRequest, grpc.ServerStreamingServer[MatchingResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method Matching not implemented")
 }
 func (UnimplementedChatServiceServer) Connect(grpc.BidiStreamingServer[SendMessage, ReceivedMessage]) error {
@@ -117,11 +123,15 @@ func RegisterChatServiceServer(s grpc.ServiceRegistrar, srv ChatServiceServer) {
 }
 
 func _ChatService_Matching_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(ChatServiceServer).Matching(&grpc.GenericServerStream[MatchingRequest, MatchingResponse]{ServerStream: stream})
+	m := new(MatchingRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ChatServiceServer).Matching(m, &grpc.GenericServerStream[MatchingRequest, MatchingResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ChatService_MatchingServer = grpc.BidiStreamingServer[MatchingRequest, MatchingResponse]
+type ChatService_MatchingServer = grpc.ServerStreamingServer[MatchingResponse]
 
 func _ChatService_Connect_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(ChatServiceServer).Connect(&grpc.GenericServerStream[SendMessage, ReceivedMessage]{ServerStream: stream})
@@ -142,7 +152,6 @@ var ChatService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "Matching",
 			Handler:       _ChatService_Matching_Handler,
 			ServerStreams: true,
-			ClientStreams: true,
 		},
 		{
 			StreamName:    "Connect",

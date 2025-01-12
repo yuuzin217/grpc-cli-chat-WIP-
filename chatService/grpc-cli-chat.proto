@@ -12,18 +12,21 @@ message MatchingRequest {
     string Name = 1; // 入力した名前
 }
 message MatchingResponse {
-    bool MatchingStatus = 1;
+    bool IsConnected = 1;
     string NoticeMessage = 2;
+    string RoomID = 3;
+    string SessionID = 4;
 }
 
 // チャット通信
 message SendMessage {
-    string Name = 1;
-    string Content = 2;
+    string RoomID = 1;
+    string Name = 2;
+    string Content = 3;
 }
 message ReceivedMessage {
     string Name = 1;
-    string Content =2;
+    string Content = 2;
 }
 
 // TODO: これでやりとりするのには少しオーバーヘッドがある気もするが、一旦気にしないこととする
@@ -38,7 +41,7 @@ message MessageInfo {
 // チャットサービス
 service ChatService {
     // マッチング
-    rpc Matching(stream MatchingRequest) returns (stream MatchingResponse);
+    rpc Matching(MatchingRequest) returns (stream MatchingResponse);
     // チャット接続
     rpc Connect(stream SendMessage) returns (stream ReceivedMessage);
 }
