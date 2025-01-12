@@ -33,8 +33,5 @@ RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest \
 RUN groupadd -r dev && useradd -r -g dev dev
 USER dev
 
-RUN mkdir -p -m 0700 ~/.ssh && \
-    ssh-keyscan github.com >> ~/.ssh/known_hosts
-
 # アプリを実行したいとき
 # CMD ["app"]
